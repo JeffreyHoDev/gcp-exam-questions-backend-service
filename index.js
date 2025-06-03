@@ -2,6 +2,8 @@ const express = require('express')
 const cors = require('cors');
 var nodemailer = require('nodemailer');
 const app = express()
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
 
 require('dotenv').config()
 const port = process.env.PORT || 8000
@@ -92,25 +94,34 @@ app.post('/get_history_list', (req, res) => {
 })
 
 app.post('/save_questions', (req, res) => {
-  const { identifier, questions, scoreResult } = req.body;
+  const { identifier, questions, scoreResult, password } = req.body;
   try {
     knex.raw(`SELECT * FROM login_identifier WHERE identifier='${identifier}'`)
     .then(response => {
-      let user = response.rows[0];
-      if (!user) {
-        return res.status(404).json({ error: 'Identifier not found' });
+      if(response.rows.length !== 0) {
+        bcrypt.compare(password, response.rows[0].password).then(result => {
+          if(result){
+            let user = response.rows[0];
+              knex.raw(
+                `INSERT INTO history (identifier_id, questions, saved_time, score) VALUES (?, ?, NOW() AT TIME ZONE 'Asia/Singapore', ?)`,
+                [user.id, JSON.stringify(questions), scoreResult]
+              )
+              .then(response => {
+                res.json({ message: 'Questions saved successfully', details: response });
+              })
+              .catch(err => {
+                console.error('Error saving questions:', err);
+                res.status(500).json({ error: err });
+              })
+                       
+          }else {
+            res.status(401).json({error: 'Unauthorized access!'})
+          }
+        })
+
+
       }else {
-        knex.raw(
-          `INSERT INTO history (identifier_id, questions, saved_time, score) VALUES (?, ?, NOW() AT TIME ZONE 'Asia/Singapore', ?)`,
-          [user.id, JSON.stringify(questions), scoreResult]
-        )
-        .then(response => {
-          res.json({ message: 'Questions saved successfully', details: response });
-        })
-        .catch(err => {
-          console.error('Error saving questions:', err);
-          res.status(500).json({ error: err });
-        })
+        res.status(404).json({ error: 'Identifier not found' });
       }
     })
     .catch(err => {
@@ -127,31 +138,46 @@ app.post('/save_questions', (req, res) => {
 
 app.post('/register_identifier', (req, res) => {
   try {
-    const { identifier, registerEmail } = req.body;
-    knex.raw(`INSERT INTO login_identifier (identifier, email, created) VALUES ('${identifier}', '${registerEmail}', NOW() AT TIME ZONE 'Asia/Singapore') ON CONFLICT (identifier) DO NOTHING`)
+    const { identifier, registerEmail, password } = req.body;
+    knex.raw(`SELECT * FROM login_identifier WHERE identifier='${identifier}'`)
     .then(response => {
-        if(registerEmail && registerEmail.trim() !== '' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerEmail)){
-          console.log('Sending email to:', registerEmail);
-          var mailOptions = {
-            from: process.env.EMAIL,
-            to: registerEmail,
-            subject: 'Identifer Registration Confirmation',
-            text: `Your registered identifier is ${identifier}.\nPlease keep this identifier safe as you will need it to log in and access your saved questions.`
-          };
-
-          transporter.sendMail(mailOptions, function(error, info){
-            if (error) {
-              console.log(error);
-            } else {
-              console.log('Email sent: ' + info.response);
-            }
+      if(response.rows.length === 0){
+        bcrypt.genSalt(saltRounds, function(err, salt) {
+          bcrypt.hash(password, salt, function(err, hash) {
+            knex.raw(
+              `INSERT INTO login_identifier (identifier, email, created, password) VALUES (?, ?, NOW() AT TIME ZONE 'Asia/Singapore', ?) ON CONFLICT (identifier) DO NOTHING`,
+              [identifier, registerEmail, hash]
+            )
+            .then(response => {
+                if(registerEmail && registerEmail.trim() !== '' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerEmail)){
+                  console.log('Sending email to:', registerEmail);
+                  var mailOptions = {
+                    from: process.env.EMAIL,
+                    to: registerEmail,
+                    subject: 'Identifer Registration Confirmation',
+                    text: `Your registered identifier is ${identifier}.\nPlease keep this identifier safe as you will need it to log in and access your saved questions.`
+                  };
+        
+                  transporter.sendMail(mailOptions, function(error, info){
+                    if (error) {
+                      console.log(error);
+                    } else {
+                      console.log('Email sent: ' + info.response);
+                    }
+                  });
+                }
+        
+              res.json({ message: 'Identifier registered successfully', details: response });
+            })
+            .catch(err => {
+              console.error('Error registering identifier:', err);
+              res.status(500).json({ error: err });
+            })
           });
-        }
-      res.json({ message: 'Identifier registered successfully', details: response });
-    })
-    .catch(err => {
-      console.error('Error registering identifier:', err);
-      res.status(500).json({ error: err });
+        });
+      }else {
+        res.status(401).json({error: "Identifier already exist"})
+      }
     })
   }catch(err) {
     console.error('Error registering identifier:', err);
@@ -161,15 +187,23 @@ app.post('/register_identifier', (req, res) => {
 
 
 app.post(`/login`, (req, res) => {
-  const { identifier } = req.body;
+  const { identifier, password } = req.body;
   try {
     knex.raw(`SELECT * FROM login_identifier WHERE identifier='${identifier}'`)
     .then(response => {
       if (response.rows.length > 0) {
-        res.json({ message: 'Login successful', details: response.rows[0]});
-      } else {
+        bcrypt.compare(password, response.rows[0].password).then(result => {
+          if(result){
+            res.json({ message: 'Login successful', details: response.rows[0]});
+          }else {
+            res.status(401).json({error: 'Unauthorized access!'})
+          }
+        })
+      }else {
         res.status(404).json({ error: 'Identifier not found' });
       }
+
+        
     })
     .catch(err => {
       console.error('Error logging in:', err);
