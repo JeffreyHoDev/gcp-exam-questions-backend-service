@@ -1,6 +1,6 @@
 const express = require('express')
 const cors = require('cors');
-
+var nodemailer = require('nodemailer');
 const app = express()
 
 require('dotenv').config()
@@ -16,6 +16,14 @@ const knex = require('knex')({
     password: process.env.DB_PASSWORD,
     database: process.env.DB,
   },
+});
+
+var transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL, // Use environment variable for security
+    pass: process.env.EMAIL_PASSWORD, // Use environment variable for security
+  }
 });
 
 
@@ -122,6 +130,23 @@ app.post('/register_identifier', (req, res) => {
     const { identifier, registerEmail } = req.body;
     knex.raw(`INSERT INTO login_identifier (identifier, email, created) VALUES ('${identifier}', '${registerEmail}', NOW() AT TIME ZONE 'Asia/Singapore') ON CONFLICT (identifier) DO NOTHING`)
     .then(response => {
+        if(registerEmail && registerEmail.trim() !== '' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerEmail)){
+          console.log('Sending email to:', registerEmail);
+          var mailOptions = {
+            from: process.env.EMAIL,
+            to: registerEmail,
+            subject: 'Identifer Registration Confirmation',
+            text: `Your registered identifier is ${identifier}.\nPlease keep this identifier safe as you will need it to log in and access your saved questions.`
+          };
+
+          transporter.sendMail(mailOptions, function(error, info){
+            if (error) {
+              console.log(error);
+            } else {
+              console.log('Email sent: ' + info.response);
+            }
+          });
+        }
       res.json({ message: 'Identifier registered successfully', details: response });
     })
     .catch(err => {
