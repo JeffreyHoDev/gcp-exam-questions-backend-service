@@ -5,7 +5,7 @@ const app = express()
 const bcrypt = require('bcrypt');
 
 require('dotenv').config()
-const saltRounds = process.env.SALT;
+const saltRounds = Number(process.env.SALT);
 const port = process.env.PORT || 8000
 
 const knex = require('knex')({
@@ -144,6 +144,11 @@ app.post('/register_identifier', (req, res) => {
       if(response.rows.length === 0){
         bcrypt.genSalt(saltRounds, function(err, salt) {
           bcrypt.hash(password, salt, function(err, hash) {
+            if (err) {
+              console.error('Error hashing password:', err);
+              return res.status(500).json({ error: 'Error hashing password' });
+            }
+            // Debug log       
             knex.raw(
               `INSERT INTO login_identifier (identifier, email, created, password) VALUES (?, ?, NOW() AT TIME ZONE 'Asia/Singapore', ?) ON CONFLICT (identifier) DO NOTHING`,
               [identifier, registerEmail, hash]
