@@ -3,9 +3,9 @@ const cors = require('cors');
 var nodemailer = require('nodemailer');
 const app = express()
 const bcrypt = require('bcrypt');
-const saltRounds = 10;
 
 require('dotenv').config()
+const saltRounds = process.env.SALT;
 const port = process.env.PORT || 8000
 
 const knex = require('knex')({
