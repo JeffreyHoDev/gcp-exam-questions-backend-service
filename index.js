@@ -38,11 +38,11 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/', (req, res) => {
 
   try {
-    let random1 = Math.floor(Math.random() * 6) + 1
+    let random1 = Math.floor(Math.random() * 4) + 2
     let random2;
   
     do {
-      random2 = Math.floor(Math.random() * 6) + 1;
+      random2 = Math.floor(Math.random() * 4) + 2;
     } while (random1 === random2);
       knex.raw(`(SELECT * FROM questions WHERE id BETWEEN 1 AND 199 ORDER BY RANDOM() LIMIT 50) UNION ALL (SELECT * FROM questions WHERE type='case${random1}' ORDER BY RANDOM() LIMIT 5) UNION ALL (SELECT * FROM questions WHERE type='case${random2}' ORDER BY RANDOM() LIMIT 5) ORDER BY id`)
       .then(response => {
